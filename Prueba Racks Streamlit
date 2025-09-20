@@ -1,0 +1,153 @@
+import streamlit as st
+
+# === Clases y funciones ===
+class Elemento:
+    def __init__(self, nombre, altura_u, tipo="generico"):
+        self.nombre = str(nombre)
+        self.altura_u = int(altura_u)
+        self.tipo = tipo
+
+def calcular_rack_recomendado(u_total):
+    racks_disponibles = [12, 15, 18, 24, 32, 42, 47]
+    for r in racks_disponibles:
+        if r >= u_total:
+            return r
+    return racks_disponibles[-1]
+
+# Colores según tipo
+TIPO_COLOR = {
+    "generico": "#D9D9D9",
+    "sonos": "#FFB347",
+    "cine": "#6FA8DC",
+    "sub": "#B4A7D6",
+    "red": "#A9D18E",
+    "tapa": "#CCCCCC",
+}
+
+def tipo_color(elemento):
+    if elemento.tipo == "sonos":
+        return TIPO_COLOR["sonos"]
+    elif "Cine" in elemento.nombre:
+        return TIPO_COLOR["cine"]
+    elif "Subwoofer" in elemento.nombre:
+        return TIPO_COLOR["sub"]
+    elif "Router" in elemento.nombre or "Switch" in elemento.nombre or "Patch" in elemento.nombre:
+        return TIPO_COLOR["red"]
+    elif "Tapa ciega" in elemento.nombre or "Balda" in elemento.nombre or "Ventilador" in elemento.nombre:
+        return TIPO_COLOR["tapa"]
+    else:
+        return TIPO_COLOR["generico"]
+
+def dibujar_rack(elementos, altura_rack):
+    st.markdown(f"<div style='border:2px solid black; width:300px; display:flex; flex-direction:column-reverse;'>", unsafe_allow_html=True)
+    
+    for e in elementos:
+        color = tipo_color(e)
+        altura_px = e.altura_u * 30  # cada U = 30px de alto
+        st.markdown(f"""
+            <div style='
+                background-color:{color};
+                border:1px solid black;
+                height:{altura_px}px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-weight:bold;
+            '>{e.nombre}</div>
+        """, unsafe_allow_html=True)
+    
+    # Añadir espacio hasta completar rack recomendado
+    u_restantes = altura_rack - sum(e.altura_u for e in elementos)
+    if u_restantes > 0:
+        altura_px = u_restantes * 30
+        st.markdown(f"<div style='height:{altura_px}px; border:1px dashed black;'></div>", unsafe_allow_html=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# === Streamlit app ===
+st.title("Visualizador de Rack Interactivo")
+
+st.header("Configuración de dispositivos")
+num_sonos = st.number_input("Número de Sonos Amp:", min_value=0, step=1, value=0)
+cine = st.selectbox("¿Añadir amplificador para cine?", ["No", "Sí"])
+sub = st.selectbox("¿Añadir amplificador para subwoofer?", ["No", "Sí"])
+
+tomas_red = st.number_input("Número de tomas de red:", min_value=0, step=1, value=0)
+puntos_wifi = st.number_input("Número de puntos de acceso Wi-Fi:", min_value=0, step=1, value=0)
+videoporteros = st.number_input("Número de unidades de videoportero/control:", min_value=0, step=1, value=0)
+otras_unidades = st.number_input("Otras unidades de red:", min_value=0, step=1, value=0)
+
+if st.button("Generar rack"):
+    total_puertos_adicionales = tomas_red + puntos_wifi + videoporteros + otras_unidades
+    total_puertos = max(num_sonos, total_puertos_adicionales)
+
+    elementos = []
+    elementos.append(Elemento("Termostato", 1))
+
+    # Bloques Sonos
+    i = 0
+    while i < num_sonos:
+        if i + 1 < num_sonos:
+            elementos.append(Elemento("Sonos Amp + Sonos Amp", 2, tipo="sonos"))
+            i += 2
+        else:
+            elementos.append(Elemento("Sonos Amp", 2, tipo="sonos"))
+            i += 1
+        if i < num_sonos:
+            elementos.append(Elemento("Tapa ciega entre Sonos", 1, tipo="tapa"))
+    if num_sonos > 0:
+        elementos.append(Elemento("Tapa ciega final Sonos", 1, tipo="tapa"))
+
+    # Cine
+    if cine == "Sí":
+        elementos.append(Elemento("Amplificador Cine", 6, tipo="cine"))
+        elementos.append(Elemento("Tapa ciega Cine", 1, tipo="tapa"))
+
+    # Balda reserva
+    elementos.append(Elemento("Balda de Reserva", 2, tipo="tapa"))
+
+    # Router + escobilla
+    elementos.append(Elemento("Router", 1, tipo="red"))
+    elementos.append(Elemento("Escobilla Router", 1, tipo="red"))
+
+    # Switches
+    restantes = total_puertos
+    switch_num = 1
+    while restantes > 0:
+        if restantes <= 16:
+            puertos = 16
+        elif restantes <= 24:
+            puertos = 24
+        else:
+            puertos = 48
+        elementos.append(Elemento(f"Switch {switch_num} ({puertos}p)", 1, tipo="red"))
+        elementos.append(Elemento(f"Escobilla Switch {switch_num}", 1, tipo="red"))
+        restantes -= puertos
+        switch_num += 1
+
+    # Patch Panel
+    elementos.append(Elemento("Patch Panel", 1, tipo="red"))
+    elementos.append(Elemento("Escobilla Patch Panel", 1, tipo="red"))
+
+    # Subwoofer
+    if sub == "Sí":
+        elementos.append(Elemento("Amplificador Subwoofer", 2, tipo="sub"))
+        elementos.append(Elemento("Tapa ciega Sub", 1, tipo="tapa"))
+
+    # Calcular total
+    u_total = sum(e.altura_u for e in elementos)
+    rack_recomendado = calcular_rack_recomendado(u_total)
+
+    # Ventilador intermedio
+    if rack_recomendado > 32 and cine == "Sí":
+        for idx, e in enumerate(elementos):
+            if e.nombre == "Amplificador Cine":
+                elementos.insert(idx, Elemento("Ventilador Intermedio", 1, tipo="tapa"))
+                u_total += 1
+                rack_recomendado = calcular_rack_recomendado(u_total)
+                break
+
+    st.write(f"**Total U necesarias:** {u_total}U")
+    st.write(f"**Rack recomendado:** {rack_recomendado}U")
+
+    dibujar_rack(elementos, altura_rack=rack_recomendado)
